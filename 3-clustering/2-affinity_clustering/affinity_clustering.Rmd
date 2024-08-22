@@ -1,0 +1,36 @@
+# Draw a map of the results of affinity score clustering
+```{r}
+library(dbscan)
+library(dplyr)
+library(ggplot2)
+library(sf)
+
+# 读取数据
+# df_k3 <- read.csv("../../../2-affinity_clustering/step2-clustering/affinity_clustering_result_with_location.csv")
+df_k3 <- read.csv("../affinity_clustering_result_with_location.csv")
+
+# 绘制聚类结果并设置绘图比例
+p_k3 <- ggplot(df_k25, aes(x = center_lon, y = center_lat, color = as.factor(poi_cluster_id))) +
+  geom_point(size = 0.5) +  # 设置点的大小
+  labs(#title = "POI K-means Clustering Results", 
+       x = "Longitude",  # 横坐标标签
+       y = "Latitude",   # 纵坐标标签
+       color = "Cluster ID") +
+  theme_minimal(base_size = 15) +  # 设置基础字体大小
+  theme(panel.background = element_rect(fill = "white"),  # 设置背景为白色
+        plot.background = element_rect(fill = "white"),   # 设置绘图区域背景为白色
+        panel.grid.major = element_line(color = "grey80"), # 设置网格线颜色
+        panel.grid.minor = element_line(color = "grey90"), # 设置次级网格线颜色
+        panel.border = element_blank(),  # 去除绘图区域的边框
+        axis.line = element_blank(),  # 去除轴线
+        plot.title = element_text(hjust = 0.5)) +  # 标题居中
+  coord_fixed(ratio = 1.5) +  # 设置Longitude和Latitude的比例为1.5（确保图形内的比例正确）
+  guides(color = guide_legend(override.aes = list(size = 2)))  # 调整图例中的点的大小
+
+# 显示图像
+print(p_k3)
+
+# 保存图像为 PNG 文件，设置长宽比为3:2
+ggsave(filename = "./affinity_map_cluster_k3_center_cluster_id_without_title.png", plot = p_k3, width = 12, height = 8, dpi = 300)
+```
+
