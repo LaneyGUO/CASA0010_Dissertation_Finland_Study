@@ -6,4 +6,4 @@ For research question 2,  used codes in folder 3-clustering and 4-correlation an
 
 
 # Data source explaination
-## The only one open source data this study used is OSM(Open Street Map) data, which can be loaded by api(already in codes).
+The only open source data this study used is OSM(Open Street Map) data, which can be loaded via api(already in codes).
