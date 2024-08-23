@@ -1,0 +1,201 @@
+---
+title: "percolation_netword_demo_helsinki"
+author: "RUI. GUO"
+date: "2024-07-25"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages loading
+```{r}
+library(igraph)
+library(reshape2)
+library(plyr)
+library(rgdal)
+```
+
+## Percolation network
+### We will use the Helsinki road network as an example
+```{r}
+# Read graph files in GraphXML format
+G <- read_graph("../../1-road_network/road_network_files/Helsinki_drive_network.graphml", format = "graphml")
+
+# Check the information of the diagram
+summary(G)
+```
+```{r}
+# Check nodes and edges
+vcount(G)  # nodes
+ecount(G)  # edges
+
+# Check out the first few edges
+head(E(G))
+```
+```{r}
+# Selection of weight columns for penetration analysis
+p_col = 'length'
+
+# Checking self-loops
+sum(which_loop(G, eids = E(G)))
+# There 88 self-loops.
+
+# Yes, remove self-loops
+G <- simplify(G, remove.loops = TRUE)
+sum(which_loop(G, eids = E(G)))
+```
+
+```{r}
+# Check the connectivity of the network and obtain summary information about the connectivity components
+components(G)$no
+summary(components(G))
+
+#There is no disconnected component.
+```
+
+```{r}
+# Get the sizes of the connected components and sort them in descending order, showing the sizes of the top 20 components
+dist_sizes <- components(G)$csize
+sort(dist_sizes, decreasing = TRUE)[1:20]
+```
+
+```{r}
+# Calculate the maximum connectivity component
+# largest_cpt <- max(dist_sizes)
+# tot_nodes <- length(V(G))
+# largest_cpt / tot_nodes
+```
+
+```{r}
+# Extracting the maximum connectivity component
+gclust <- components(G, mode = 'weak')
+largestConnectedComponent <- induced.subgraph(G, V(G)[which(gclust$membership == which.max(gclust$csize))])
+G <- largestConnectedComponent
+summary(G)
+```
+
+```{r}
+# Get the weights of all edges
+all_weights <- E(G)$length
+size_net <- length(V(G))
+
+# Assigning coordinates to nodes
+data_coords <- data.frame(id = V(G)$name, x = V(G)$x, y = V(G)$y)
+head(data_coords)
+```
+
+
+
+
+
+
+
+```{r}
+# We will use the Helsinki road network as an example
+# Any other file containing the information of the network in the following format
+# "id_node1","id_node2","link_weight" works
+dir <- "../data/london_street_net/"
+file_network <- paste0(dir,"London_edgelist_clean.txt")
+
+# if the network is embedded in space we can get its coordinates as well to plot the network in space
+file_coords <- paste0(dir,"london_coordinates_clean.csv")
+
+#Now let us create the directory for the results
+dir_res <- "Results/"
+dir.create(dir_res)
+#and the directory where you will create your membership tables
+dir_memb <- paste0(dir_res,"membTables/")
+dir.create(dir_memb)
+
+#Files for the results:
+
+    #number of clusters at each threshold
+    file_n_clust <- paste0(dir_res,"n_clusters_p")
+
+    #file for the largest cluster size
+    file_clust_size <- paste0(dir_res,"clust_p_size.txt")
+
+    #directory for the results of the subnetworks
+    dir_nets <- paste0(dir_res,"net_measures/")
+    dir.create(dir_nets)
+    #let us define the function to be used later on to comute the topological diameter
+    top_diameter <- function(g){
+      diameter(g,weights = NA)
+    }
+```
+
+
+```{r network}
+#-----------------Network ----------------
+    
+#let us read the file that contains the list of nodes
+all_table <- read.table(file_network,header=T,sep=",")
+head(all_table)
+
+#choose the column that contains the weight that you which to use for the percolation
+colnames(all_table)
+
+#In this case it's column 3, "length".
+p_col=3
+
+#let us construct the network first and do the percolation afterwards
+node1=all_table$start_point
+node2=all_table$end_point
+weight=all_table$length
+df=data.frame(node1,node2,weight)
+
+G=graph.data.frame(df,directed=FALSE)
+head(E(G))
+
+# Let us see if there are self loops
+sum(which_loop(G, eids = E(G)))
+# yes, let us remove them
+G=simplify(G, remove.loops = TRUE)
+sum(which_loop(G, eids = E(G)))
+
+
+#Is it a connected network or does it have disconnected parts?
+
+components(G)$no
+
+summary(components(G))
+
+#There are 135 disconnected components. 
+#This operation gives you the membership of each point, the cluster size of 
+#each component is obtained by typing \$csize and the number of clusters \$no.
+
+dist_sizes=components(G)$csize
+sort(dist_sizes,decreasing=T)[1:20]
+
+#The largest connected component has most points
+#Let us compute the size of largest component
+largest_cpt=max(dist_sizes)
+tot_nodes=length(V(G))
+largest_cpt/tot_nodes
+
+#Although there are disconnected bits, 99% of the nodes belong to the largest component.
+
+#Let us take only the largest connected component
+gclust<-components(G, mode='weak')
+largestConnectedComponent<-induced.subgraph(G, V(G)[which(gclust$membership == which.max(gclust$csize))])
+G=largestConnectedComponent
+summary(G)
+all_weights=(E(G)$weight)
+size_net=length(V(G))
+
+#--> let us assign coordinates to the nodes
+data_coords <- read.csv(file_coords,sep=',',header=TRUE)
+head(data_coords)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

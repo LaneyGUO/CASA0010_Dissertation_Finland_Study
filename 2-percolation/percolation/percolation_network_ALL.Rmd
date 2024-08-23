@@ -1,0 +1,299 @@
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Packages loading
+```{r}
+library(igraph)
+library(reshape2)
+library(plyr)
+library(rgdal)
+```
+
+## Percolation network
+### Example: Finland
+```{r}
+# Read graph files in GraphXML format
+G <- read_graph("../../1-road_network/road_network_files/Finland_drive_network.graphml", format = "graphml")
+
+# Check the information of the diagram
+summary(G)
+```
+
+```{r}
+# View node properties
+print(vertex_attr_names(G))
+```
+
+```{r}
+# View edge properties
+print(edge_attr_names(G))
+```
+
+
+```{r}
+# Check numbers of nodes and edges
+vcount(G)  # nodes
+ecount(G)  # edges
+
+# Check out the first few edges
+head(E(G))
+```
+```{r}
+# Selection of weight columns for penetration analysis
+p_col = 'length'
+
+# Checking self-loops
+sum(which_loop(G, eids = E(G)))
+# There are 9818 self_loops
+```
+
+
+```{r}
+# Yes, there are 9818 self_loops remove self-loops
+
+# Remove self-loop - original method deprecated
+# G_non_self_loops <- simplify(G, remove.loops = TRUE)
+
+# Removing self-loop - New Method
+# Identify the ID of the self-loop edges
+loops <- which(ends(G, E(G))[,1] == ends(G, E(G))[,2])
+# Remove self-loop
+G_non_self_loops <- delete_edges(G, loops)
+sum(which_loop(G_non_self_loops, eids = E(G_non_self_loops)))
+
+summary(G_non_self_loops)
+# View node properties
+print(vertex_attr_names(G_non_self_loops))
+# View edge properties
+print(edge_attr_names(G_non_self_loops))
+```
+
+
+```{r}
+# Check the connectivity of the network and obtain summary information about the connectivity components
+components(G_non_self_loops)$no
+summary(components(G_non_self_loops))
+
+# There is no disconnected component.
+# Only one component: size: 430983.
+```
+
+```{r}
+# Get the sizes of the connected components and sort them in descending order, showing the sizes of the top 20 components
+# dist_sizes <- components(G)$csize
+# sort(dist_sizes, decreasing = TRUE)[1:20]
+```
+
+```{r}
+# Calculate the maximum connectivity component
+# largest_cpt <- max(dist_sizes)
+# tot_nodes <- length(V(G))
+# largest_cpt / tot_nodes
+```
+
+```{r}
+# Extracting the maximum connectivity component
+# gclust <- components(G, mode = 'weak')
+# largestConnectedComponent <- induced_subgraph(G, V(G)[which(gclust$membership == which.max(gclust$csize))])
+# G_non_self_loops <- largestConnectedComponent
+# summary(G_non_self_loops)
+```
+
+
+
+
+```{r}
+# Viewing the properties of a graph node
+G1 <- G_non_self_loops
+all_weights=(E(G1)$length)
+size_net=length(V(G1))
+summary(G1)
+```
+
+
+```{r}
+# Change x and y to be numeric
+V(G1)$x <- as.numeric(V(G1)$x)
+V(G1)$y <- as.numeric(V(G1)$y)
+```
+
+```{r}
+# plot G1 - using ggplot
+library(igraph)
+library(ggplot2)
+
+# Extract data from nodes and edges
+nodes <- data.frame(
+  id = V(G1)$id,
+  x = V(G1)$x,
+  y = V(G1)$y
+)
+
+edges <- data.frame(
+  from = ends(G1, E(G1))[,1],
+  to = ends(G1, E(G1))[,2]
+)
+
+# Get node coordinates
+nodes_pos <- merge(edges, nodes, by.x = "from", by.y = "id")
+nodes_pos <- merge(nodes_pos, nodes, by.x = "to", by.y = "id", suffixes = c(".from", ".to"))
+```
+
+```{r}
+# Create graphics
+ggplot() +
+  # draw edges
+  geom_segment(data = nodes_pos, aes(x = x.from, y = y.from, xend = x.to, yend = y.to), 
+               color = "black", size = 0.03, alpha = 0.05) +
+  # draw nodes
+  geom_point(data = nodes, aes(x = x, y = y), 
+             color = "blue", size = 0.03, alpha = 0.05) +
+  # add axis and title
+  theme_minimal() +
+  theme(
+    # Set the panel background colour to white
+    panel.background = element_rect(fill = "white", color = NA),
+    # Set the graph background colour to white
+    plot.background = element_rect(fill = "white", color = NA),
+    # Setting the main grid line colour and width
+    panel.grid.major = element_line(color = "grey80", linewidth = 0.2),
+    # Set the sub-grid line colour and width
+    panel.grid.minor = element_line(color = "grey90", linewidth = 0.1),
+    # Setting the font size and bolding of X-axis headings
+    axis.title.x = element_text(size = 14, face = "bold"),
+    # Setting the font size and bolding of Y-axis headings
+    axis.title.y = element_text(size = 14, face = "bold"),
+    # Setting the font size, bold and centre alignment of headings
+    plot.title = element_text(size = 24, face = "bold", hjust = 0.5)
+    ) +
+  labs(title = "Finland road network", x = "Longitude", y = "Latitude")
+
+# save graph
+ggsave("./graph/Finland_road_network_graph.png", width = 10, height = 15, dpi = 300)
+
+```
+
+
+
+
+## Percolation
+```{r}
+# Extract subgraphs with different thresholds, calculate the connectivity component, diameter and maximum connectivity component (LCC) of these subgraphs, and save the results to a file.
+
+# Define the output file path
+file_clust_size <- "./results/cluster_size_results.txt"  # 存储最大连通分量的信息
+dir_nets <- "./results/network_results/"  # 存储直径结果的目录
+dir_memb <- "./results/membership_results/"  # 存储聚类成员信息的目录
+file_n_clust <- "cluster_count_"  # 存储聚类计数结果的文件名前缀
+
+# Ensure that the catalogue exists
+if (!dir.exists(dir_nets)) dir.create(dir_nets)
+if (!dir.exists(dir_memb)) dir.create(dir_memb)
+
+top_diameter <- function(g){
+  diameter(g,weights = NA)
+}
+```
+
+```{r}
+# define vector with percolation threshold
+#"ID" "n_points"
+#"1" 4801
+#"2" 2
+#"3" 2
+rmin = 5
+rmax = 3000
+r0 = seq(215, rmax, by=5)
+n_loops = length(r0)
+```
+
+```{r}
+write('threshold\t size\t %total',file=file_clust_size,append = FALSE)
+```
+
+
+```{r}
+# define the colours for the 10 top clusters
+top10 = colors()[c(553,29,258,654,91,115,456,48,102,40)]
+# visualise the colours
+barplot(c(1:10), col=top10)
+jumps_2plot = c(50,100,300)
+```
+
+
+```{r}
+# Initialise v_LCC_t as an empty data frame
+v_LCC_t <- data.frame(threshold = numeric(0), LCC = numeric(0), LCC_p = numeric(0))
+r0 = seq(980, 1000, by=5)
+for (i_t in r0) {
+  print(paste0("Processing threshold=", i_t))
+  
+  # Extract subgraph: edge weights <= threshold i_t
+  g <- subgraph.edges(G1, E(G1)[length <= i_t])
+  
+  # Check the number of vertices in the subgraph
+  num_vertices <- length(V(g))
+  num_clusters <- length(components(g, mode = "weak")$membership)
+  
+  print(paste0("Number of vertices: ", num_vertices))
+  print(paste0("Number of clusters: ", num_clusters))
+  
+  if (num_vertices == 0) {
+    print("No vertices in the subgraph, skipping this threshold.")
+    next
+  }
+  
+  # Use vertex IDs instead of names
+  vertex_ids <- V(g)$id
+  
+  # Calculate connected components of the subgraph
+  membclusters <- components(g, mode = "weak")$membership
+  m <- data.frame(id_point = vertex_ids, id_cluster = membclusters)
+  
+  # Calculate diameter of each subcomponent
+  g_d <- decompose(g, mode = "weak", min.vertices = 4)
+  n_v <- sapply(g_d, vcount)  # Number of nodes
+  d_v <- sapply(g_d, diameter)  # Metric diameter
+  d_top <- sapply(g_d, top_diameter)  # Topological diameter
+  m_d <- as.data.frame(cbind(n_v, d_v, d_top))
+  m_d <- m_d[order(-m_d$n_v), ]
+  colnames(m_d) <- c("n_nodes", "diameter", "topological_diameter")
+  
+  # Write diameter results to file
+  file_res_net <- paste0(dir_nets, "diameter_", i_t, ".txt")
+  write.table(m_d, file_res_net, col.names = TRUE, sep = ",", row.names = FALSE)
+  
+  # Write cluster membership table for each threshold to file
+  file_memb <- paste0(dir_memb, "Finland_p", i_t, ".txt")
+  write.table(m, file_memb, col.names = TRUE, sep = ",", row.names = FALSE)
+  
+  M_data <- as.data.frame(m)
+  table_data <- table(M_data$id_cluster)
+  LCC <- max(unname(table_data))  # Largest connected component
+  LCC_p <- LCC / size_net  # Percentage of the largest connected component
+  v_LCC <- c(i_t, LCC, LCC_p)
+  
+  if (i_t == rmin) {
+    v_LCC_t <- v_LCC
+  } else {
+    v_LCC_t <- rbind(v_LCC_t, v_LCC)
+  }
+  
+  sorted_table <- sort(table_data, decreasing = TRUE)
+  file_out <- paste0(file_n_clust, i_t, ".txt")
+  write.table(sorted_table, file_out, row.names = FALSE, col.names = c('id_cluster', 'n_points'))
+  
+  # Write size of largest connected component to file
+  write(v_LCC, file = file_clust_size, append = TRUE)
+  
+  # Check if the largest connected component reaches 98% of network size
+  if (LCC >= (size_net * 0.98)) {
+    print(paste0("At threshold i_t=", i_t, ", LCC=", LCC, ", and network size=", size_net))
+    break
+  }
+}
+
+```
+

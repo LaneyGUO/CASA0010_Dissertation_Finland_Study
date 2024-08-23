@@ -1,0 +1,173 @@
+# Build a hierarchical tree
+## Load packages
+```{r}
+# library(ggplot2)
+library(igraph)
+```
+
+## Initialize settings
+```{r}
+path_res <- paste0("../2-percolation/percolation/results/membership_results/")
+path_data = path_res
+path_plots <- paste0("../2-percolation/percolation/results/Trees/")
+dir.create(path_plots)
+file_name <- "Finland_p"
+file_tree <- paste0(path_res, "Full_tree_int.txt")
+
+# Ensure that the directory where the images are stored exists
+if (!dir.exists(path_plots)) {
+  dir.create(path_plots)
+}
+```
+
+```{r}
+# Select the important jumps to plot the tree
+v_jumps <- c(520, 590, 700, 750)
+length(v_jumps)
+```
+
+## Computation  of tree
+```{r}
+i_level = 1
+for (i in v_jumps) {
+    i = v_jumps[i_level]
+    print(paste0("level =", i_level, " and d=", i))
+    parent2 = c(0)
+    file_data <- paste(path_data, file_name, i, ".txt", sep = "")
+    M_data <- read.table(file_data, sep = ",", header = TRUE)
+    # Convert id_cluster and n_points to integers
+    if (!is.null(M_data$id_cluster)) {
+    M_data$id_cluster <- as.integer(M_data$id_cluster)
+    }
+    if (!is.null(M_data$n_points)) {
+        M_data$n_points <- as.integer(M_data$n_points)
+    }
+    head(M_data)
+    dim(M_data)
+    nam <- paste0("M_data", i_level)
+    assign(nam, M_data)
+
+    g <- graph_from_data_frame(M_data)
+    M_table <- table(M_data$id_cluster)
+    m <- data.frame(id_cluster = names(M_table), n_points = as.vector(M_table))
+    m_sub <- m[m$n_points >= 50, ]
+    M_sub <- M_data[M_data$id_cluster %in% m_sub$id_cluster, ]
+    dim(M_sub)
+    nam <- paste("M_sub", i_level, sep = "")
+    assign(nam, M_sub)
+    M_sub_table <- table(M_sub$id_cluster)
+    m_sub_table <- data.frame(id_cluster = names(M_sub_table), n_points = as.vector(M_sub_table))
+    nam <- paste("node_weight", i_level, sep = "")
+    assign(nam, m_sub_table)
+    v_list <- as.vector(m_sub_table$id_cluster)
+    nam <- paste("v_list", i_level, sep = "")
+    assign(nam, v_list)
+    n_clusts <- length(M_sub_table)
+    nam <- paste("n_clusts", i_level, sep = "")
+    assign(nam, n_clusts)
+    g_sub <- graph.data.frame(M_sub, directed = F)
+    nam <- paste("g_sub", i_level, sep = "")
+    assign(nam, g_sub)
+
+    if (i == v_jumps[1]) {
+        Full_tree <- cbind(i, M_sub[, c(2, 1)])
+    } else {
+        new_bit <- cbind(i, M_sub[, c(2, 1)])
+        Full_tree <- rbind(Full_tree, new_bit)
+        n_clust_l1 <- get(paste("n_clusts", i_level - 1, sep = ""))
+        g_lev1 <- get(paste("g_sub", i_level - 1, sep = ""))
+        v_list_lev1 <- get(paste("v_list", i_level - 1, sep = ""))
+        m_adj <- adjacent_vertices(g_lev1, v_list_lev1, mode = "all")
+        v_tmp2 <- M_sub$id_point
+        for (j in 1:n_clust_l1) {
+            v_name1 <- v_list_lev1[j]
+            v_tmp1 <- m_adj[[j]]$name
+            v_inter <- intersect(v_tmp1, v_tmp2)
+            if (length(v_inter) == 0) {
+                print(paste("!!!!there was a mistake for year=", y_loop, " and p_ds=", i, " for cluster j=", j))
+            } else {
+                id_parent <- M_sub[M_sub$id_point == v_inter[1], ]$id_cluster
+                if (parent2[1] == 0) {
+                    parent2 = c(id_parent)
+                    child2 = c(v_name1)
+                } else {
+                    parent2 = c(parent2, id_parent)
+                    child2 = c(child2, v_name1)
+                }
+            }
+        }
+
+        if (i_level == 2) {
+            parent22 = paste("L3_", parent2, sep = "")
+            tree_2 <- data.frame(level1 = parent22, clusters = child2)
+            g2 <- graph.data.frame(tree_2, directed = F)
+            v = match(V(g2)$name, child2)
+            v_pos_nn = which(!is.na(v))
+            V(g2)[v_pos_nn]$name
+            for (i_pos in 1:length(v_pos_nn)) {
+                V(g2)[v_pos_nn[i_pos]]$size = node_weight1$n_points[i_pos]
+            }
+            v_pos_n = which(is.na(v))
+            mod_names_list = paste("L3_", node_weight2$id_cluster, sep = "")
+            v_pos_list = match(V(g2)[v_pos_n]$name, mod_names_list)
+            for (i_pos in 1:length(v_pos_n)) {
+                V(g2)[v_pos_n[i_pos]]$size = node_weight2$n_points[v_pos_list[i_pos]]
+            }
+            V(g_sub1)$size <- degree(g_sub1)
+            g_u2 <- igraph::union(g_sub1, g2)
+            V(g_u2)$size = V(g_u2)$size_1
+            v_pos_NA1 <- which(is.na(V(g_u2)$size_1))
+            V(g_u2)$size[v_pos_NA1] = V(g_u2)$size_2[v_pos_NA1]
+            g_tree2 <- g_u2
+            g_old <- g_tree2
+        } else {
+            parent32 = paste("L", i_level + 1, "_", parent2, sep = "")
+            child32 = paste("L", i_level, "_", child2, sep = "")
+            tree_3 <- data.frame(level1 = parent32, clusters = child32)
+            g3 <- graph.data.frame(tree_3, directed = F)
+            node_weight_child <- get(paste("node_weight", i_level - 1, sep = ""))
+            child_names_list = paste("L", i_level, "_", node_weight_child$id_cluster, sep = "")
+            v = match(V(g3)$name, child_names_list)
+            v_pos_list = which(!is.na(v))
+            for (i_pos in 1:length(v_pos_list)) {
+                V(g3)[v_pos_list[i_pos]]$size = node_weight_child$n_points[i_pos]
+            }
+            node_weight_parent <- get(paste("node_weight", i_level, sep = ""))
+            parent_names_list = paste("L", i_level + 1, "_", node_weight_parent$id_cluster, sep = "")
+            v = match(V(g3)$name, parent_names_list)
+            v_pos_list = which(!is.na(v))
+            v2 = v = match(parent_names_list, V(g3)$name)
+            v_in_list = which(!is.na(v))
+            for (i_pos in 1:length(v_pos_list)) {
+                V(g3)[v_pos_list[i_pos]]$size = node_weight_parent$n_points[v_in_list[i_pos]]
+            }
+            nam <- paste("g_u", i_level, sep = "")
+            assign(nam, g3)
+            g_new <- igraph::union(g_old, g3)
+            V(g_new)$size = V(g_new)$size_1
+            v_pos_NA1 <- which(is.na(V(g_new)$size_1))
+            V(g_new)$size[v_pos_NA1] = V(g_new)$size_2[v_pos_NA1]
+            nam <- paste("g_tree", i_level, sep = "")
+            assign(nam, g_new)
+            g_old <- g_new
+        }
+    }
+    i_level = i_level + 1
+}
+
+write.table(Full_tree, file_tree, row.names = FALSE, col.names = c('p_ds', 'ID_cluster', 'ID_points'))
+nam <- paste0("g_tree")
+assign(nam, g_new)
+file_graph <- paste0(path_res, "tree_graph_FULL_5levels.txt")
+write_graph(g_new, file_graph, format = "ncol")
+```
+
+## Save tree results
+```{r}
+write.table(Full_tree, file_tree, row.names = FALSE, col.names = c('p_ds', 'ID_cluster', 'ID_points'))
+nam <- paste0("g_tree")
+assign(nam, g_new)
+file_graph <- paste0(path_res, "tree_graph_int.txt")
+write_graph(g_new, file_graph, format = "ncol")
+```
+

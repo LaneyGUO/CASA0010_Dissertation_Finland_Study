@@ -1,0 +1,38 @@
+# cluster_size_count
+
+```{r}
+# initialize threshold range
+r = seq(215, 910, by = 5)
+```
+
+```{r}
+# create the .txt file
+write('threshold\t size\t %total', file = "../2-percolation/percolation/results/cluster_size_results_FULL.txt", append = FALSE)
+```
+
+```{r}
+# calculate the percentage of LLC and write
+for (i_t in r){
+  print(paste0("writing threshold = ", i_t))
+  
+  # read in data
+  file_path <- paste("../2-percolation/percolation/results/cluster_count/cluster_count_", i_t, ".txt", sep = "")
+  lines <- readLines(file_path)
+  # 跳过标题行，获取第一行数据（假设第一行为标题行）
+  first_data_line <- lines[2]
+  # 将该行按空格或其他分隔符拆分为多个部分
+  values <- strsplit(first_data_line, "\\s+")[[1]]
+  # 获取第二个值
+  second_value <- values[2]
+  # 将第二个值转换为数字类型并定义为size变量
+  size <- as.numeric(second_value)
+    
+  
+  # Calculate the %
+  percentage <- round(size / 430983, 7)
+  v_LLC <- c(i_t, size, percentage)
+  
+  # write data
+  write(v_LLC, file ="../2-percolation/percolation/results/cluster_size_results_FULL.txt" , append = TRUE)
+}
+```

@@ -1,0 +1,216 @@
+# Mapping percolation results
+
+## Loading packages
+```{r}
+library(igraph)
+library(reshape2)
+library(plyr)
+library(rgdal)
+```
+
+```{r}
+# Read graph files in GraphXML format
+G <- read_graph("../1-road_network/road_network_files/Finland_drive_network.graphml", format = "graphml")
+
+# Check the information of the diagram
+summary(G)
+```
+
+```{r}
+# View node properties
+print(vertex_attr_names(G))
+```
+
+```{r}
+# View edge properties
+print(edge_attr_names(G))
+```
+
+
+```{r}
+# Check numbers of nodes and edges
+vcount(G)  # nodes
+ecount(G)  # edges
+
+# Check out the first few edges
+head(E(G))
+```
+
+```{r}
+# Selection of weight columns for penetration analysis
+p_col = 'length'
+
+# Checking self-loops
+sum(which_loop(G, eids = E(G)))
+# There are 9818 self_loops
+```
+
+
+```{r}
+# Yes, there are 9818 self_loops remove self-loops
+
+# Remove self-loop - original method deprecated
+# G_non_self_loops <- simplify(G, remove.loops = TRUE)
+
+# Removing self-loop - New Method
+# Identify the ID of the self-loop edges
+loops <- which(ends(G, E(G))[,1] == ends(G, E(G))[,2])
+# Remove self-loop
+G_non_self_loops <- delete_edges(G, loops)
+sum(which_loop(G_non_self_loops, eids = E(G_non_self_loops)))
+
+summary(G_non_self_loops)
+# View node properties
+print(vertex_attr_names(G_non_self_loops))
+# View edge properties
+print(edge_attr_names(G_non_self_loops))
+```
+
+
+```{r}
+# Check the connectivity of the network and obtain summary information about the connectivity components
+components(G_non_self_loops)$no
+summary(components(G_non_self_loops))
+
+# There is no disconnected component.
+# Only one component: size: 430983.
+```
+
+```{r}
+# Extracting the maximum connectivity component
+gclust <- components(G_non_self_loops, mode = 'weak')
+largestConnectedComponent <- induced_subgraph(G_non_self_loops, V(G_non_self_loops)[which(gclust$membership == which.max(gclust$csize))])
+G_non_self_loops <- largestConnectedComponent
+summary(G_non_self_loops)
+```
+
+
+```{r}
+# Viewing the properties of a graph node
+G1 <- G_non_self_loops
+all_weights=(E(G1)$length)
+size_net=length(V(G1))
+summary(G1)
+```
+
+
+```{r}
+# Change x and y to be numeric
+V(G1)$x <- as.numeric(V(G1)$x)
+V(G1)$y <- as.numeric(V(G1)$y)
+```
+
+```{r}
+# Specify the save path
+save_path <- "../1-road_network/road_network_files/G1_Finland_network.graphml"
+# Save the graph in GraphML format
+write_graph(G1, file = save_path, format = "graphml")
+```
+
+## Transfer graph information to coords file
+```{r}
+# Specify the path to the GraphML file
+file_path <- "../1-road_network/road_network_files/G1_Finland_network.graphml"
+
+# Read the GraphML file
+G1 <- read_graph(file_path, format = "graphml")
+
+# Create a data frame with coordinates
+coords <- data.frame(
+  id_point = V(G1)$id,
+  x = V(G1)$x,
+  y = V(G1)$y
+)
+
+# Write the data frame to a CSV file
+write.csv(coords, "../1-road_network/road_network_files/data_coords.csv", row.names = FALSE)
+```
+
+## Set file paths
+```{r}
+# Set file paths and directories
+dir_nets <- "../2-percolation/percolation/results/network_results/"
+dir_memb <- "../2-percolation/percolation/results/membership_results/"
+file_clust_size <- "../2-percolation/percolation/results/cluster_size_results_FULL.txt"
+file_n_clust <- "../2-percolation/percolation/results/cluster_count/"
+dir_maps <- "../2-percolation/percolation/results/maps/"
+
+# Ensure the directory for saving images exists
+if (!dir.exists(dir_maps)) {
+  dir.create(dir_maps)
+}
+```
+
+## Set color and threholds range
+```{r}
+# Read threshold range and color scheme
+r1 <- seq(1000, 1020, by = 20)
+# r1 <- c(520, 590, 700, 750, 970)
+n_loops <- length(r1)
+
+# Define colors for the top 10 clusters
+top10 <- colors()[c(553, 29, 258, 654, 91, 115, 456, 48, 102, 40)]
+# Display the colors for the top 10 clusters
+barplot(c(1:10), col = top10, main = "Top 10 Cluster Colors", xlab = "Cluster", ylab = "Color")
+```
+
+## Define the visulization function
+```{r}
+visualize_threshold <- function(threshold) {
+  # Messages
+  print(paste0("Mapping threshold = ", threshold))
+  
+  # Read cluster membership
+  file_memb <- paste0(dir_memb, "Finland_p", threshold, ".txt")
+  memb_data <- read.table(file_memb, header = TRUE, sep = ",", stringsAsFactors = FALSE)
+  
+  # Read node coordinates
+  data_coords <- read.csv("../1-road_network/road_network_files/data_coords.csv") 
+  
+  # Merge data
+  merged_data <- merge(memb_data, data_coords, by.x = "id_point", by.y = "id_point")
+  
+  # Read diameter data
+  file_res_net <- paste0(dir_nets, "diameter_", threshold, ".txt")
+  diameter_data <- read.table(file_res_net, header = TRUE, sep = ",", stringsAsFactors = FALSE)
+  
+  # Read cluster size statistics
+  file_out <- paste0(file_n_clust, "cluster_count_", threshold, ".txt")
+  cluster_sizes <- read.table(file_out, header = FALSE, sep = " ", col.names = c("id_cluster", "n_points"), stringsAsFactors = FALSE)
+  
+  # Ensure id_cluster and n_points columns are numeric
+  cluster_sizes$id_cluster <- as.numeric(cluster_sizes$id_cluster)
+  cluster_sizes$n_points <- as.numeric(cluster_sizes$n_points)
+  
+  # Assign colors to the top 10 clusters
+  sorted_clusters <- cluster_sizes[order(-cluster_sizes$n_points), ]
+  top_clusters <- sorted_clusters$id_cluster[1:10]
+  merged_data$colour <- ifelse(merged_data$id_cluster %in% top_clusters, top10[match(merged_data$id_cluster, top_clusters)], "grey")
+  merged_data$size <- ifelse(merged_data$id_cluster %in% top_clusters, 0.2, 0.1)
+  
+  # Create image file
+  file_map <- paste0(dir_maps, "Finland_d", threshold, ".png")
+  
+  png(file_map, height = 1000, width = 600)
+  par(bg = "black")
+  plot(
+    merged_data$x, merged_data$y,
+    xlab = NA, ylab = NA,
+    pch = 16, cex = merged_data$size,
+    axes = FALSE, frame.plot = FALSE,
+    col = merged_data$colour
+  )
+  # title(main = paste0("Finland at d=", threshold, "m"), col.main = "white")
+  dev.off()
+}
+```
+
+## Run visulization
+```{r}
+# Visualization of each threshold
+for (threshold in r1) {
+  visualize_threshold(threshold)
+}
+```
+
+
